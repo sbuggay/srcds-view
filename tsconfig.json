@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "module": "none",
+        "lib": [
+            "dom",
+            "es2015"
+        ],
+        "noImplicitAny": true,
+        "strict": true,
+        "removeComments": true,
+        "preserveConstEnums": true,
+        "sourceMap": true
+    },
+    "files": [
+        "index.ts"
+    ]
+}
