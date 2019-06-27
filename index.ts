@@ -7,6 +7,13 @@ const servers = [
     "devan.space:27020"
 ];
 
+enum EInfoState {
+    None,
+    Loading,
+    Loaded,
+    Error
+}
+
 interface IInfoResponse {
     type: string;
     version: number;
