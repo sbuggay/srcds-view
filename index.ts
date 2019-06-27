@@ -14,7 +14,7 @@ enum EInfoState {
     Error
 }
 
-interface IInfoResponse {
+interface IInfoData { // Data returned from a normal A2S_INFO Query
     type: string;
     version: number;
     serverName: string;
@@ -35,124 +35,133 @@ interface IInfoResponse {
     pw: boolean;
 }
 
-class Server {
+interface IServer {
+    ip: string;
+    port: string;
+    state: EInfoState;
+    data?: IInfoData;
+}
 
-    private ip: string;
-    private port: string;
-    public data: IInfoResponse | null;
+// Helper function to create a div
+function div(className: string, innerText?: string) {
+    const div = document.createElement("div");
+    div.innerText = innerText || "";
+    div.className = className || "";
+    return div;
+}
 
-    constructor(ip: string, port: string) {
-        this.ip = ip;
-        this.port = port;
-        this.data = null;
-        this.fetchServerInfo();
+function render(server: IServer) {
+
+    // Set up containers
+    const container = div("server");
+    const left = div("left");
+    const right = div("right");
+
+    // Set up structure
+    container.appendChild(left);
+    container.appendChild(right);
+
+    // Add the title, which will always appear
+    left.appendChild(div("title", server.data ? server.data.serverName : `${server.ip}:${server.port}`));
+
+    switch (server.state) {
+        case EInfoState.Loading:
+            // Add loading spinner
+            break;
+        case EInfoState.Loaded:
+            if (server.data) {
+
+                left.appendChild(div("map", server.data.map));
+                left.appendChild(div("players", `${server.data.numPlayers}/${server.data.maxPlayers} players`));
+                
+                const connect = document.createElement("button");
+                connect.innerText = "connect";
+                right.appendChild(connect);
+            }
+            break;
+        case EInfoState.Error:
+            container.append(document.createTextNode("Error"));
+            break;
+        case EInfoState.None:
+        default:
+            break;
     }
 
-    async fetchServerInfo() {
-        const url = `https://${domain}/?ip=${this.ip}&port=${this.port}`;
-        const response = await fetch(url);
-        const json = await response.json();
-        if (json.status !== "error") {
-            const serverData = Object.assign({}, json, {
-                status: "available",
-                mapImage: `/images/maps/${json.map}.png`,
-                connect: `steam://connect/${json.ip}:${json.port}`,
-                loading: false
-            });
+    return container;
+}
 
-            return serverData;
-        }
+async function fetchServerInfo(ip: string, port: string) {
+    const url = `https://${domain}/?ip=${ip}&port=${port}`;
+
+    const response = await fetch(url);
+    const json = await response.json();
+
+    if (json.status === "error") {
+        throw new Error(json.status);
     }
 
-    render() {
-        const serverNode = document.createElement("div");
-        const text = document.createTextNode(this.ip);
-        serverNode.appendChild(text);
-        serverNode.appendChild(text);
-        return serverNode;
-    }
+    return json;
 }
 
 class View {
 
-    servers: string[];
+    _mount: HTMLElement | null;
+    servers: IServer[];
 
     constructor(servers: string[]) {
-        this.servers = servers;
+        this.servers = servers.map((server) => {
+            const [ip, port] = server.split(":");
+            return {
+                ip,
+                port,
+                state: EInfoState.None
+            }
+        });
+
+        this._mount = null;
     }
 
-    mount(id: string) {
-        const _mount = document.getElementById(id);
-        if (!_mount) {
+    refresh() {
+        this.servers.forEach((server, idx) => {
+            this.servers[idx].state = EInfoState.Loading;
+            fetchServerInfo(server.ip, server.port).then(response => {
+                // Surely there is a better way to update this instead of being in it's own forEach..
+                this.servers[idx].state = EInfoState.Loaded;
+                this.servers[idx].data = response;
+                this.render();
+            });
+        });
+
+        // for each response, rerender everything?
+    }
+
+    clearMount() {
+        if (!this._mount) return;
+        this._mount.innerHTML = ""; // best way to empty an element?
+    }
+
+    appendMount(elem: HTMLElement) {
+        if (!this._mount) return;
+        this._mount.appendChild(elem);
+    }
+
+    render() {
+        // Clear out mounted element
+        this.clearMount();
+
+        // Render each server.. This means that we do N full rerenders per refresh, N being number of servers.
+        this.servers.forEach(server => {
+            this.appendMount(render(server));
+        });
+
+    }
+
+    mount(id: string, timeout?: number) {
+        this._mount = document.getElementById(id);
+        if (!this._mount) {
             throw new Error("No element to mount to");
         }
 
-        const serverNodes = this.servers.map(server => {
-            const [ip, port] = server.split(":");
-            const s = new Server(ip, port);
-            return s.render();
-        });
-
-        serverNodes.forEach(n => {
-            _mount.appendChild(n);
-
-        });
-
+        this.refresh();
     }
 }
-
-
-
-// // create vue control
-// const serverControl = new Vue({
-//     el: "#servers",
-
-//     // initial data seed
-//     data: {
-//         servers: []
-//     },
-
-//     created() {
-//         this.servers = servers.map((url) => {
-//             return Object.assign({}, serverTemplate, {
-//                 url: url,
-//                 serverName: url
-//             });
-//         });
-
-//         this.fetchData();
-//     },
-
-//     methods: {
-//         fetchData: function () {
-//             this.servers.forEach((server, index) => {
-//                 const [ip, port] = server.url.split(":");
-//                 this.fetchServerInfo(ip, port, index);
-//             });
-//         },
-//         fetchServerInfo: async function (ip, port, index) {
-//             const url = `https://${domain}/?ip=${ip}&port=${port}`;
-//             const response = await fetch(url);
-//             const json = await response.json();
-//             if (json.status !== "error") {
-//                 const serverData = Object.assign({}, serverTemplate, json, {
-//                     status: "available",
-//                     mapImage: `/images/maps/${json.map}.png`,
-//                     gameImage: `/images/games/${convertToGame(json.gameName)}.png`,
-//                     connect: `steam://connect/${json.ip}:${json.port}`,
-//                     loading: false
-//                 });
-
-//                 Vue.set(this.servers, index, serverData);
-//             }
-//             else {
-//                 const serverData = Object.assign({}, serverTemplate, this.servers[index], {
-//                     status: "error",
-//                     loading: false
-//                 });
-
-//                 Vue.set(this.servers, index, serverData);
-//             }
-//         }
-//     }
-// });
