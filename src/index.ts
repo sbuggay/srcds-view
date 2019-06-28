@@ -1,12 +1,5 @@
 const domain = "srcds.devan.network"
 
-const servers = [
-    "devan.network:27015",
-    "devan.network:27020",
-    "devan.space:27015",
-    "devan.space:27020"
-];
-
 enum EInfoState {
     None,
     Loading,
@@ -50,6 +43,14 @@ function div(className: string, innerText?: string) {
     return div;
 }
 
+function loadingSpinner() {
+    const container = div("lds-ellipsis");
+    container.appendChild(div(""));
+    container.appendChild(div(""));
+    container.appendChild(div(""));
+    return container;
+}
+
 function render(server: IServer) {
 
     // Set up containers
@@ -65,24 +66,35 @@ function render(server: IServer) {
     left.appendChild(div("title", server.data ? server.data.serverName : `${server.ip}:${server.port}`));
 
     switch (server.state) {
-        case EInfoState.Loading:
-            // Add loading spinner
-            break;
         case EInfoState.Loaded:
             if (server.data) {
 
+                // Details
                 left.appendChild(div("map", server.data.map));
-                left.appendChild(div("players", `${server.data.numPlayers}/${server.data.maxPlayers} players`));
-                
-                const connect = document.createElement("button");
-                connect.innerText = "connect";
-                right.appendChild(connect);
+                left.appendChild(div("players", `${server.data.numPlayers} / ${server.data.maxPlayers} players`));
+
+                // Create connect button
+                const buttonLink = document.createElement("a");
+                buttonLink.href = `steam://connect/${server.ip}:${server.port}`;
+                buttonLink.classList.add("connect");
+                buttonLink.innerText = "Connect";
+                right.appendChild(buttonLink);
+
+                // Update container to change border
+                container.classList.add("available");
             }
             break;
         case EInfoState.Error:
-            container.append(document.createTextNode("Error"));
+            container.classList.add("error");
+            left.appendChild(div("error", "Not able to reach game server"));
             break;
         case EInfoState.None:
+        case EInfoState.Loading:
+            // Add loading spinner
+            const loading = div("loading");
+            loading.appendChild(loadingSpinner());
+            container.appendChild(loading);
+            break;
         default:
             break;
     }
@@ -122,17 +134,21 @@ class View {
     }
 
     refresh() {
-        this.servers.forEach((server, idx) => {
-            this.servers[idx].state = EInfoState.Loading;
+        this.servers.forEach((server) => {
+            server.state = EInfoState.Loading;
             fetchServerInfo(server.ip, server.port).then(response => {
                 // Surely there is a better way to update this instead of being in it's own forEach..
-                this.servers[idx].state = EInfoState.Loaded;
-                this.servers[idx].data = response;
+                server.state = EInfoState.Loaded;
+                server.data = response;
+                this.render();
+            }).catch(error => {
+                server.state = EInfoState.Error;
                 this.render();
             });
         });
 
-        // for each response, rerender everything?
+        // Intial render
+        this.render();
     }
 
     clearMount() {

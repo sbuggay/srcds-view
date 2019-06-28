@@ -9,9 +9,10 @@
         "strict": true,
         "removeComments": true,
         "preserveConstEnums": true,
-        "sourceMap": true
+        "sourceMap": true,
+        "outDir": "./example/"
     },
     "files": [
-        "index.ts"
+        "src/index.ts"
     ]
 }

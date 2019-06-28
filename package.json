@@ -1,0 +1,24 @@
+{
+  "name": "srcds-view",
+  "version": "1.0.0",
+  "description": "",
+  "main": "example/srcdsview.js",
+  "scripts": {
+    "build": "tsc && uglifyjs example/index.js -o example/srcdsview.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbuggay/srcds-view.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/sbuggay/srcds-view/issues"
+  },
+  "homepage": "https://github.com/sbuggay/srcds-view#readme",
+  "dependencies": {
+    "typescript": "^3.5.2",
+    "uglify-js": "^3.6.0"
+  }
+}
