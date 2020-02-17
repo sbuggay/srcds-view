@@ -1,9 +1,10 @@
 "use strict";
 var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
         function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
         function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
@@ -34,7 +35,6 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
         if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
     }
 };
-var domain = "srcds.devan.network";
 var EInfoState;
 (function (EInfoState) {
     EInfoState[EInfoState["None"] = 0] = "None";
@@ -55,6 +55,14 @@ function loadingSpinner() {
     container.appendChild(div(""));
     return container;
 }
+function renderHeader(header) {
+    var container = div("header");
+    var image = document.createElement("img");
+    image.src = getIcon(header);
+    container.append(image);
+    container.append(div("", header));
+    return container;
+}
 function render(server) {
     var container = div("server");
     var left = div("left");
@@ -65,12 +73,28 @@ function render(server) {
     switch (server.state) {
         case EInfoState.Loaded:
             if (server.data) {
-                left.appendChild(div("map", server.data.map));
-                left.appendChild(div("players", server.data.numPlayers + " / " + server.data.maxPlayers + " players"));
+                left.appendChild(div("detail", server.data.numPlayers + " / " + server.data.maxPlayers + " players on " + server.data.map));
                 var buttonLink = document.createElement("a");
                 buttonLink.href = "steam://connect/" + server.ip + ":" + server.port;
                 buttonLink.classList.add("connect");
                 buttonLink.innerText = "Connect";
+                var copyDiv = div("copySection");
+                var copyInput_1 = document.createElement("input");
+                copyInput_1.classList.add("copyInput");
+                copyInput_1.value = "connect " + server.ip + ":" + server.port;
+                copyInput_1.readOnly = true;
+                var copyButton = document.createElement("button");
+                copyButton.onclick = function () {
+                    copyInput_1.select();
+                    copyInput_1.setSelectionRange(0, 99999);
+                    document.execCommand("copy");
+                };
+                var pasteSpan = document.createElement("span");
+                pasteSpan.className = "icon-paste";
+                copyButton.appendChild(pasteSpan);
+                copyDiv.appendChild(copyInput_1);
+                copyDiv.appendChild(copyButton);
+                right.appendChild(copyDiv);
                 right.appendChild(buttonLink);
                 container.classList.add("available");
             }
@@ -90,53 +114,99 @@ function render(server) {
     }
     return container;
 }
-function fetchServerInfo(ip, port) {
-    return __awaiter(this, void 0, void 0, function () {
-        var url, response, json;
-        return __generator(this, function (_a) {
-            switch (_a.label) {
-                case 0:
-                    url = "https://" + domain + "/?ip=" + ip + "&port=" + port;
-                    return [4, fetch(url)];
-                case 1:
-                    response = _a.sent();
-                    return [4, response.json()];
-                case 2:
-                    json = _a.sent();
-                    if (json.status === "error") {
-                        throw new Error(json.status);
-                    }
-                    return [2, json];
-            }
-        });
-    });
-}
 var View = (function () {
-    function View(servers) {
-        this.servers = servers.map(function (server) {
-            var _a = server.split(":"), ip = _a[0], port = _a[1];
-            return {
-                ip: ip,
-                port: port,
-                state: EInfoState.None
-            };
-        });
+    function View(domain, servers) {
+        this.domain = domain;
+        if (servers) {
+            this.servers = servers.map(function (server) {
+                var _a = server.split(":"), ip = _a[0], port = _a[1];
+                return {
+                    ip: ip,
+                    port: port,
+                    state: EInfoState.None
+                };
+            });
+        }
+        else {
+            this.servers = [];
+        }
         this._mount = null;
     }
-    View.prototype.refresh = function () {
-        var _this = this;
-        this.servers.forEach(function (server) {
-            server.state = EInfoState.Loading;
-            fetchServerInfo(server.ip, server.port).then(function (response) {
-                server.state = EInfoState.Loaded;
-                server.data = response;
-                _this.render();
-            })["catch"](function (error) {
-                server.state = EInfoState.Error;
-                _this.render();
+    View.prototype.getServers = function () {
+        return __awaiter(this, void 0, void 0, function () {
+            var url, response, json;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        url = "https://" + this.domain + "/servers";
+                        return [4, fetch(url)];
+                    case 1:
+                        response = _a.sent();
+                        return [4, response.json()];
+                    case 2:
+                        json = _a.sent();
+                        if (json.status === "error") {
+                            throw new Error(json.status);
+                        }
+                        return [2, json.filter(function (server) { return server !== ""; })];
+                }
             });
         });
-        this.render();
+    };
+    View.prototype.fetchServerInfo = function (ip, port) {
+        return __awaiter(this, void 0, void 0, function () {
+            var url, response, json;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0:
+                        url = "https://" + this.domain + "/?ip=" + ip + "&port=" + port;
+                        return [4, fetch(url)];
+                    case 1:
+                        response = _a.sent();
+                        return [4, response.json()];
+                    case 2:
+                        json = _a.sent();
+                        if (json.status === "error") {
+                            throw new Error(json.status);
+                        }
+                        return [2, json];
+                }
+            });
+        });
+    };
+    View.prototype.refresh = function () {
+        return __awaiter(this, void 0, void 0, function () {
+            var servers;
+            var _this = this;
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0: return [4, this.getServers()];
+                    case 1:
+                        servers = _a.sent();
+                        this.servers = servers.map(function (server) {
+                            var _a = server.split(":"), ip = _a[0], port = _a[1];
+                            return {
+                                ip: ip,
+                                port: port,
+                                state: EInfoState.None
+                            };
+                        });
+                        this.servers.forEach(function (server) {
+                            server.state = EInfoState.Loading;
+                            _this.fetchServerInfo(server.ip, server.port).then(function (response) {
+                                server.state = EInfoState.Loaded;
+                                server.data = response;
+                                _this.render();
+                            })["catch"](function () {
+                                server.state = EInfoState.Error;
+                                _this.render();
+                            });
+                        });
+                        this.render();
+                        return [2];
+                }
+            });
+        });
     };
     View.prototype.clearMount = function () {
         if (!this._mount)
@@ -151,8 +221,30 @@ var View = (function () {
     View.prototype.render = function () {
         var _this = this;
         this.clearMount();
+        var buckets = new Map();
         this.servers.forEach(function (server) {
-            _this.appendMount(render(server));
+            var _a, _b;
+            var category = ((_a = server.data) === null || _a === void 0 ? void 0 : _a.gameName) || "Unknown";
+            if (buckets.has(category)) {
+                (_b = buckets.get(category)) === null || _b === void 0 ? void 0 : _b.push(server);
+            }
+            else {
+                buckets.set(category, [server]);
+            }
+        });
+        var keys = Array.from(buckets.keys()).filter(function (a, b) {
+            if (a === "Unknown")
+                return false;
+            return true;
+        });
+        keys.forEach(function (key) {
+            var servers = buckets.get(key);
+            if (!servers)
+                return;
+            _this.appendMount(renderHeader(key));
+            servers.forEach(function (server) {
+                _this.appendMount(render(server));
+            });
         });
     };
     View.prototype.mount = function (id, timeout) {
@@ -164,4 +256,20 @@ var View = (function () {
     };
     return View;
 }());
+var iconMapping = {
+    "Half-Life": "70_icon.jpg",
+    "Half-Life 2 Deathmatch": "320_icon.jpg",
+    "Ricochet": "60_icon.jpg",
+    "Counter-Strike": "10_icon.jpg",
+    "Counter-Strike: Source": "240_icon.jpg",
+    "Counter-Strike: Global Offensive": "730_icon.jpg"
+};
+function getIcon(gamename) {
+    if (iconMapping[gamename]) {
+        return "/icons/" + iconMapping[gamename];
+    }
+    else {
+        return "/icons/unknown.jpg";
+    }
+}
 //# sourceMappingURL=index.js.map
