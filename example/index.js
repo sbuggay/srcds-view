@@ -69,34 +69,41 @@ function render(server) {
     var right = div("right");
     container.appendChild(left);
     container.appendChild(right);
-    left.appendChild(div("title", server.data ? server.data.serverName : server.ip + ":" + server.port));
+    left.appendChild(div("title", server.data ? server.data.info.serverName : server.host + ":" + server.port));
     switch (server.state) {
         case EInfoState.Loaded:
             if (server.data) {
-                left.appendChild(div("detail", server.data.numPlayers + " / " + server.data.maxPlayers + " players on " + server.data.map));
-                var buttonLink = document.createElement("a");
-                buttonLink.href = "steam://connect/" + server.ip + ":" + server.port;
-                buttonLink.classList.add("connect");
-                buttonLink.innerText = "Connect";
-                var copyDiv = div("copySection");
-                var copyInput_1 = document.createElement("input");
-                copyInput_1.classList.add("copyInput");
-                copyInput_1.value = "connect " + server.ip + ":" + server.port;
-                copyInput_1.readOnly = true;
-                var copyButton = document.createElement("button");
-                copyButton.onclick = function () {
-                    copyInput_1.select();
-                    copyInput_1.setSelectionRange(0, 99999);
-                    document.execCommand("copy");
-                };
-                var pasteSpan = document.createElement("span");
-                pasteSpan.className = "icon-paste";
-                copyButton.appendChild(pasteSpan);
-                copyDiv.appendChild(copyInput_1);
-                copyDiv.appendChild(copyButton);
-                right.appendChild(copyDiv);
-                right.appendChild(buttonLink);
-                container.classList.add("available");
+                var info = server.data.info;
+                left.appendChild(div("detail", info.numPlayers + " / " + info.maxPlayers + " players on " + info.map));
+                left.appendChild(div("detail", info.gameType + " " + info.gameVersion));
+                if (server.data.error) {
+                    container.classList.add("error");
+                }
+                else {
+                    var buttonLink = document.createElement("a");
+                    buttonLink.href = "steam://connect/" + server.host + ":" + server.port;
+                    buttonLink.classList.add("connect");
+                    buttonLink.innerText = "Connect";
+                    var copyDiv = div("copySection");
+                    var copyInput_1 = document.createElement("input");
+                    copyInput_1.classList.add("copyInput");
+                    copyInput_1.value = "connect " + server.host + ":" + server.port;
+                    copyInput_1.readOnly = true;
+                    var copyButton = document.createElement("button");
+                    copyButton.onclick = function () {
+                        copyInput_1.select();
+                        copyInput_1.setSelectionRange(0, 99999);
+                        document.execCommand("copy");
+                    };
+                    var pasteSpan = document.createElement("span");
+                    pasteSpan.className = "icon-paste";
+                    copyButton.appendChild(pasteSpan);
+                    copyDiv.appendChild(copyInput_1);
+                    copyDiv.appendChild(copyButton);
+                    right.appendChild(copyDiv);
+                    right.appendChild(buttonLink);
+                    container.classList.add("available");
+                }
             }
             break;
         case EInfoState.Error:
@@ -119,9 +126,9 @@ var View = (function () {
         this.domain = domain;
         if (servers) {
             this.servers = servers.map(function (server) {
-                var _a = server.split(":"), ip = _a[0], port = _a[1];
+                var _a = server.split(":"), host = _a[0], port = _a[1];
                 return {
-                    ip: ip,
+                    host: host,
                     port: port,
                     state: EInfoState.None
                 };
@@ -138,17 +145,14 @@ var View = (function () {
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        url = "https://" + this.domain + "/servers";
+                        url = this.domain + "/auto";
                         return [4, fetch(url)];
                     case 1:
                         response = _a.sent();
                         return [4, response.json()];
                     case 2:
                         json = _a.sent();
-                        if (json.status === "error") {
-                            throw new Error(json.status);
-                        }
-                        return [2, json.filter(function (server) { return server !== ""; })];
+                        return [2, json];
                 }
             });
         });
@@ -159,7 +163,7 @@ var View = (function () {
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0:
-                        url = "https://" + this.domain + "/?ip=" + ip + "&port=" + port;
+                        url = this.domain + "/?host=" + ip + "&port=" + port;
                         return [4, fetch(url)];
                     case 1:
                         response = _a.sent();
@@ -177,32 +181,20 @@ var View = (function () {
     View.prototype.refresh = function () {
         return __awaiter(this, void 0, void 0, function () {
             var servers;
-            var _this = this;
             return __generator(this, function (_a) {
                 switch (_a.label) {
                     case 0: return [4, this.getServers()];
                     case 1:
                         servers = _a.sent();
-                        this.servers = servers.map(function (server) {
-                            var _a = server.split(":"), ip = _a[0], port = _a[1];
+                        this.servers = Object.keys(servers).map(function (key) {
+                            var _a = key.split(":"), host = _a[0], port = _a[1];
                             return {
-                                ip: ip,
+                                host: host,
                                 port: port,
-                                state: EInfoState.None
+                                state: EInfoState.Loaded,
+                                data: servers[key]
                             };
                         });
-                        this.servers.forEach(function (server) {
-                            server.state = EInfoState.Loading;
-                            _this.fetchServerInfo(server.ip, server.port).then(function (response) {
-                                server.state = EInfoState.Loaded;
-                                server.data = response;
-                                _this.render();
-                            })["catch"](function () {
-                                server.state = EInfoState.Error;
-                                _this.render();
-                            });
-                        });
-                        this.render();
                         return [2];
                 }
             });
@@ -223,17 +215,21 @@ var View = (function () {
         this.clearMount();
         var buckets = new Map();
         this.servers.forEach(function (server) {
-            var _a, _b;
-            var category = ((_a = server.data) === null || _a === void 0 ? void 0 : _a.gameName) || "Unknown";
+            var _a, _b, _c;
+            console.log(server);
+            var category = ((_b = (_a = server.data) === null || _a === void 0 ? void 0 : _a.info) === null || _b === void 0 ? void 0 : _b.gameName) || "Error";
+            if (server.state === EInfoState.Loading) {
+                category = "Unknown";
+            }
             if (buckets.has(category)) {
-                (_b = buckets.get(category)) === null || _b === void 0 ? void 0 : _b.push(server);
+                (_c = buckets.get(category)) === null || _c === void 0 ? void 0 : _c.push(server);
             }
             else {
                 buckets.set(category, [server]);
             }
         });
         var keys = Array.from(buckets.keys()).filter(function (a, b) {
-            if (a === "Unknown")
+            if (a === "Error" || a === "Unknown")
                 return false;
             return true;
         });
@@ -248,11 +244,25 @@ var View = (function () {
         });
     };
     View.prototype.mount = function (id, timeout) {
+        var _this = this;
         this._mount = document.getElementById(id);
         if (!this._mount) {
             throw new Error("No element to mount to");
         }
-        this.refresh();
+        var refreshAndRender = function () { return __awaiter(_this, void 0, void 0, function () {
+            return __generator(this, function (_a) {
+                switch (_a.label) {
+                    case 0: return [4, this.refresh()];
+                    case 1:
+                        _a.sent();
+                        this.render();
+                        return [2];
+                }
+            });
+        }); };
+        refreshAndRender();
+        setInterval(refreshAndRender, 15000);
+        this.render();
     };
     return View;
 }());

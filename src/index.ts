@@ -27,10 +27,14 @@ interface IInfoData { // Data returned from a normal A2S_INFO Query
 }
 
 interface IServer {
-    ip: string;
+    host: string;
     port: string;
     state: EInfoState;
-    data?: IInfoData;
+    data?: {
+        error: any;
+        lastSeen: number;
+        info: IInfoData;
+    };
 }
 
 // Helper function to create a div
@@ -70,53 +74,62 @@ function render(server: IServer) {
     container.appendChild(right);
 
     // Add the title, which will always appear
-    left.appendChild(div("title", server.data ? server.data.serverName : `${server.ip}:${server.port}`));
+    left.appendChild(div("title", server.data ? server.data.info.serverName : `${server.host}:${server.port}`));
 
     switch (server.state) {
         case EInfoState.Loaded:
             if (server.data) {
 
+                const info = server.data.info;
+
                 // Details
-                left.appendChild(div("detail", `${server.data.numPlayers} / ${server.data.maxPlayers} players on ${server.data.map}`));
+                left.appendChild(div("detail", `${info.numPlayers} / ${info.maxPlayers} players on ${info.map}`));
+                left.appendChild(div("detail", `${info.gameType} ${info.gameVersion}`));
 
-                // Create connect button
-                const buttonLink = document.createElement("a");
-                buttonLink.href = `steam://connect/${server.ip}:${server.port}`;
-                buttonLink.classList.add("connect");
-                buttonLink.innerText = "Connect";
-
-
-                const copyDiv = div("copySection");
-
-                const copyInput = document.createElement("input");
-                copyInput.classList.add("copyInput");
-                copyInput.value = `connect ${server.ip}:${server.port}`;
-                copyInput.readOnly = true;
-
-                const copyButton = document.createElement("button");
-                copyButton.onclick = () => {
-                    /* Select the text field */
-                    copyInput.select();
-                    copyInput.setSelectionRange(0, 99999); /*For mobile devices*/
-
-                    /* Copy the text inside the text field */
-                    document.execCommand("copy");
-                }
-
-
-                const pasteSpan = document.createElement("span");
-                pasteSpan.className = "icon-paste";
-
-                copyButton.appendChild(pasteSpan);
-
-                copyDiv.appendChild(copyInput);
-                copyDiv.appendChild(copyButton);
-
-                right.appendChild(copyDiv);
-                right.appendChild(buttonLink);
 
                 // Update container to change border
-                container.classList.add("available");
+                if (server.data.error) {
+                    container.classList.add("error");
+                }
+                else {
+                    // Create connect button
+                    const buttonLink = document.createElement("a");
+                    buttonLink.href = `steam://connect/${server.host}:${server.port}`;
+                    buttonLink.classList.add("connect");
+                    buttonLink.innerText = "Connect";
+
+                    const copyDiv = div("copySection");
+
+                    const copyInput = document.createElement("input");
+                    copyInput.classList.add("copyInput");
+                    copyInput.value = `connect ${server.host}:${server.port}`;
+                    copyInput.readOnly = true;
+
+                    const copyButton = document.createElement("button");
+                    copyButton.onclick = () => {
+                        /* Select the text field */
+                        copyInput.select();
+                        copyInput.setSelectionRange(0, 99999); /*For mobile devices*/
+
+                        /* Copy the text inside the text field */
+                        document.execCommand("copy");
+                    }
+
+
+                    const pasteSpan = document.createElement("span");
+                    pasteSpan.className = "icon-paste";
+
+                    copyButton.appendChild(pasteSpan);
+
+                    copyDiv.appendChild(copyInput);
+                    copyDiv.appendChild(copyButton);
+
+                    right.appendChild(copyDiv);
+                    right.appendChild(buttonLink);
+
+                    container.classList.add("available");
+
+                }
             }
             break;
         case EInfoState.Error:
@@ -149,9 +162,9 @@ class View {
         this.domain = domain;
         if (servers) {
             this.servers = servers.map((server) => {
-                const [ip, port] = server.split(":");
+                const [host, port] = server.split(":");
                 return {
-                    ip,
+                    host,
                     port,
                     state: EInfoState.None
                 }
@@ -164,19 +177,15 @@ class View {
     }
 
     async getServers() {
-        const url = `https://${this.domain}/servers`;
+        const url = `${this.domain}/auto`;
         const response = await fetch(url);
         const json = await response.json();
 
-        if (json.status === "error") {
-            throw new Error(json.status);
-        }
-
-        return json.filter((server: string) => server !== "");
+        return json;
     }
 
     async fetchServerInfo(ip: string, port: string) {
-        const url = `https://${this.domain}/?ip=${ip}&port=${port}`;
+        const url = `${this.domain}/?host=${ip}&port=${port}`;
 
         const response = await fetch(url);
         const json = await response.json();
@@ -193,30 +202,18 @@ class View {
         // If we weren't supplied hardcoded servers, check for new ones on refresh from domian.
 
         const servers = await this.getServers();
-        this.servers = servers.map((server: any) => {
-            const [ip, port] = server.split(":");
+
+        this.servers = Object.keys(servers).map(key => {
+            const [host, port] = key.split(":");
             return {
-                ip,
+                host,
                 port,
-                state: EInfoState.None
+                state: EInfoState.Loaded,
+                data: servers[key]
             }
         });
 
-        this.servers.forEach((server) => {
-            server.state = EInfoState.Loading;
-            this.fetchServerInfo(server.ip, server.port).then(response => {
-                // Surely there is a better way to update this instead of being in it's own forEach..
-                server.state = EInfoState.Loaded;
-                server.data = response;
-                this.render();
-            }).catch(() => {
-                server.state = EInfoState.Error;
-                this.render();
-            });
-        });
 
-        // Intial render
-        this.render();
     }
 
     clearMount() {
@@ -236,7 +233,14 @@ class View {
         const buckets = new Map<string, IServer[]>();
 
         this.servers.forEach(server => {
-            const category = server.data?.gameName || "Unknown";
+
+            console.log(server);
+
+            let category = server.data?.info?.gameName || "Error";
+
+            if (server.state === EInfoState.Loading) {
+                category = "Unknown";
+            }
 
             if (buckets.has(category)) {
                 buckets.get(category)?.push(server);
@@ -249,7 +253,7 @@ class View {
 
         // Push the unknown bucket to the bottom
         const keys = Array.from(buckets.keys()).filter((a, b) => {
-            if (a === "Unknown") return false;
+            if (a === "Error" || a === "Unknown") return false;
             return true;
         });
 
@@ -264,13 +268,23 @@ class View {
 
     }
 
+
     mount(id: string, timeout?: number) {
         this._mount = document.getElementById(id);
         if (!this._mount) {
             throw new Error("No element to mount to");
         }
 
-        this.refresh();
+        const refreshAndRender = async () => {
+            await this.refresh();
+            this.render();
+        }
+
+        refreshAndRender();
+        setInterval(refreshAndRender, 15000);
+
+        this.render();
+
     }
 }
 
